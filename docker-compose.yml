@@ -1,0 +1,23 @@
+services:
+  api:
+    build: ./api
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-oscar2026}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-abc123}
+      - DB_PATH=/data/oscar.db
+    volumes:
+      - db_data:/data
+    expose:
+      - "5000"
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "9010:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db_data:
