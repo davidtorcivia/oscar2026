@@ -15,6 +15,7 @@
   let error = $state('');
   let showLeaderboard = $state(false);
   let hasResults = $state(false);
+  let locked = $state(false);
   let pollInterval;
 
   categories.subscribe(c => cats = c);
@@ -27,6 +28,18 @@
 
   let pickedCount = $state(0);
 
+  // Lock time: 7:30 PM EDT = 23:30 UTC on March 15, 2026
+  const LOCK_UTC = new Date('2026-03-15T23:30:00Z');
+
+  function checkLock() {
+    if (new Date() >= LOCK_UTC) {
+      locked = true;
+      // Auto-redirect to results
+      user.set({ ...userData, submitted: true });
+      currentView.set('results');
+    }
+  }
+
   async function checkResults() {
     try {
       const data = await api.getResults();
@@ -35,8 +48,12 @@
   }
 
   onMount(() => {
+    checkLock();
     checkResults();
-    pollInterval = setInterval(checkResults, 60000);
+    pollInterval = setInterval(() => {
+      checkLock();
+      checkResults();
+    }, 30000);
   });
 
   onDestroy(() => {
@@ -86,6 +103,7 @@
   {#if showLeaderboard}
     <Leaderboard />
   {:else}
+    <div class="lock-notice">Ballots lock at 7:30 PM ET when the awards begin</div>
     <ProgressBar picked={pickedCount} total={cats.length} />
 
     {#if saving}
@@ -115,7 +133,12 @@
   <div class="footer-inner">
     {#if showConfirm}
       <div class="confirm-dialog">
-        <p>This is final. Once cast, your ballot cannot be changed.</p>
+        <p>
+          {#if pickedCount < cats.length}
+            You have {cats.length - pickedCount} blank categories. Blank picks cannot earn points.
+          {/if}
+          This is final. Once cast, your ballot cannot be changed.
+        </p>
         <div class="confirm-actions">
           <button class="btn-cancel" onclick={() => showConfirm = false}>Cancel</button>
           <button class="btn-confirm" onclick={handleSubmit} disabled={submitting}>
@@ -126,12 +149,16 @@
     {:else}
       <button
         class="cast-btn"
-        disabled={pickedCount < cats.length}
+        disabled={pickedCount === 0}
         onclick={() => showConfirm = true}
       >
-        {pickedCount < cats.length
-          ? `Pick ${cats.length - pickedCount} more to cast ballot`
-          : 'Cast Ballot'}
+        {#if pickedCount === 0}
+          Pick at least one category to cast
+        {:else if pickedCount < cats.length}
+          Cast Ballot ({pickedCount}/{cats.length} picked)
+        {:else}
+          Cast Ballot
+        {/if}
       </button>
     {/if}
   </div>
@@ -166,6 +193,14 @@
   .ballot-tabs button.active {
     color: var(--gold);
     border-bottom-color: var(--gold);
+  }
+
+  .lock-notice {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 8px 0 0;
   }
 
   .save-indicator {

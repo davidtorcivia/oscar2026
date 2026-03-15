@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify
 from models import get_db
+from config import is_locked, LOCK_TIME
 
 leaderboard_bp = Blueprint("leaderboard", __name__)
 
@@ -7,6 +8,7 @@ leaderboard_bp = Blueprint("leaderboard", __name__)
 @leaderboard_bp.route("/api/leaderboard", methods=["GET"])
 def get_leaderboard():
     db = get_db()
+    locked = is_locked()
 
     # Get all winners
     winners = {}
@@ -18,12 +20,22 @@ def get_leaderboard():
 
     total_announced = len(winners)
 
-    # Get all submitted users and their picks
-    users = db.execute(
-        "SELECT id, username, submitted_at FROM users WHERE submitted_at IS NOT NULL ORDER BY submitted_at"
-    ).fetchall()
+    if locked:
+        # After lock: include all users who have at least 1 pick
+        users = db.execute(
+            """SELECT DISTINCT u.id, u.username, u.submitted_at
+               FROM users u
+               JOIN picks p ON p.user_id = u.id
+               ORDER BY u.submitted_at NULLS LAST"""
+        ).fetchall()
+    else:
+        # Before lock: only manually submitted users
+        users = db.execute(
+            "SELECT id, username, submitted_at FROM users WHERE submitted_at IS NOT NULL ORDER BY submitted_at"
+        ).fetchall()
 
     result = []
+    lock_time_str = LOCK_TIME.strftime("%Y-%m-%d %H:%M:%S")
     for user in users:
         picks = db.execute(
             "SELECT category_id, nominee_id FROM picks WHERE user_id = ?",
@@ -35,16 +47,22 @@ def get_leaderboard():
             if winners.get(pick["category_id"]) == pick["nominee_id"]:
                 score += 1
 
+        # For display: use actual submitted_at, or lock time for auto-locked users
+        submitted_at = user["submitted_at"] or (lock_time_str if locked else None)
+
         result.append({
             "user_id": user["id"],
             "username": user["username"],
             "score": score,
             "total": total_announced,
-            "submitted_at": user["submitted_at"],
+            "submitted_at": submitted_at,
         })
 
-    # Sort by score desc, then by submitted_at asc (earlier is better for tiebreaker display)
-    result.sort(key=lambda x: (-x["score"], x["submitted_at"] or ""))
+    # Sort: score desc, then manually submitted before auto-locked, then by submitted_at asc
+    def sort_key(x):
+        was_manual = x["submitted_at"] != lock_time_str
+        return (-x["score"], not was_manual, x["submitted_at"] or "")
+    result.sort(key=sort_key)
 
     # Assign ranks with ties -- same score = same rank
     for i, entry in enumerate(result):

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, make_response
 import bcrypt
 from models import get_db
 from middleware import signer, get_user_id_from_cookie
+from config import is_locked, LOCK_TIME
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -49,11 +50,18 @@ def enter():
     picks = {str(r["category_id"]): r["nominee_id"] for r in picks_rows}
     db.close()
 
+    locked = is_locked()
+    # After lock time, treat any user with picks as submitted
+    if locked and not submitted and len(picks) > 0:
+        submitted = True
+
     token = signer.dumps({"user_id": user_id})
     resp = make_response(jsonify({
         "user_id": user_id,
         "username": username,
         "submitted": submitted,
+        "locked": locked,
+        "lock_time": LOCK_TIME.isoformat(),
         "ballot": picks,
     }))
     resp.set_cookie(
@@ -84,10 +92,18 @@ def check():
     picks = {str(r["category_id"]): r["nominee_id"] for r in picks_rows}
     db.close()
 
+    locked = is_locked()
+    submitted = user["submitted_at"] is not None
+    # After lock time, treat any user with picks as submitted
+    if locked and not submitted and len(picks) > 0:
+        submitted = True
+
     return jsonify({
         "user_id": user["id"],
         "username": user["username"],
-        "submitted": user["submitted_at"] is not None,
+        "submitted": submitted,
+        "locked": locked,
+        "lock_time": LOCK_TIME.isoformat(),
         "ballot": picks,
     })
 

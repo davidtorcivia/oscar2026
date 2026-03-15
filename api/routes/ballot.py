@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from models import get_db
 from middleware import get_user_id_from_cookie
+from config import is_locked
 
 ballot_bp = Blueprint("ballot", __name__)
 
@@ -75,6 +76,9 @@ def save_ballot(user_id):
     if cookie_uid != user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
+    if is_locked():
+        return jsonify({"error": "Ballots are locked"}), 403
+
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
@@ -115,6 +119,9 @@ def submit_ballot(user_id):
     if cookie_uid != user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
+    if is_locked():
+        return jsonify({"error": "Ballots are locked"}), 403
+
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
@@ -142,18 +149,15 @@ def submit_ballot(user_id):
             (user_id, cat_id, nominee_id, nominee_id),
         )
 
-    # Verify all 24 categories have picks
-    total_cats = db.execute("SELECT COUNT(*) FROM categories").fetchone()[0]
+    # Must have at least 1 pick
     user_picks = db.execute(
         "SELECT COUNT(*) FROM picks WHERE user_id = ?", (user_id,)
     ).fetchone()[0]
 
-    if user_picks < total_cats:
+    if user_picks == 0:
         db.commit()
         db.close()
-        return jsonify({
-            "error": f"All {total_cats} categories must have a pick. You have {user_picks}."
-        }), 400
+        return jsonify({"error": "You need at least one pick to cast your ballot."}), 400
 
     db.execute(
         "UPDATE users SET submitted_at = CURRENT_TIMESTAMP WHERE id = ?", (user_id,)
