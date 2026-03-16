@@ -48,17 +48,17 @@ def get_ballot(user_id):
     ).fetchall()
     picks = {str(r["category_id"]): r["nominee_id"] for r in picks_rows}
 
-    # Calculate score
+    # Calculate score (supports tied winners)
     score = 0
     total = 0
     for cat_id_str, nominee_id in picks.items():
-        winner = db.execute(
+        cat_winners = db.execute(
             "SELECT id FROM nominees WHERE category_id = ? AND is_winner = 1",
             (int(cat_id_str),),
-        ).fetchone()
-        if winner:
+        ).fetchall()
+        if cat_winners:
             total += 1
-            if winner["id"] == nominee_id:
+            if any(w["id"] == nominee_id for w in cat_winners):
                 score += 1
 
     db.close()

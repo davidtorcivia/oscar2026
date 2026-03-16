@@ -10,13 +10,13 @@ def get_leaderboard():
     db = get_db()
     locked = is_locked()
 
-    # Get all winners
+    # Get all winners (multiple per category possible for ties)
     winners = {}
     winner_rows = db.execute(
         "SELECT category_id, id FROM nominees WHERE is_winner = 1"
     ).fetchall()
     for w in winner_rows:
-        winners[w["category_id"]] = w["id"]
+        winners.setdefault(w["category_id"], set()).add(w["id"])
 
     total_announced = len(winners)
 
@@ -44,7 +44,8 @@ def get_leaderboard():
 
         score = 0
         for pick in picks:
-            if winners.get(pick["category_id"]) == pick["nominee_id"]:
+            cat_winners = winners.get(pick["category_id"], set())
+            if pick["nominee_id"] in cat_winners:
                 score += 1
 
         # For display: use actual submitted_at, or lock time for auto-locked users
@@ -81,19 +82,21 @@ def get_results():
     cats = db.execute("SELECT * FROM categories ORDER BY sort_order").fetchall()
     result = []
     for cat in cats:
-        winner = db.execute(
+        winner_rows = db.execute(
             "SELECT id, name, subtitle FROM nominees WHERE category_id = ? AND is_winner = 1",
             (cat["id"],),
-        ).fetchone()
+        ).fetchall()
+        winners_list = [
+            {"id": w["id"], "name": w["name"], "subtitle": w["subtitle"]}
+            for w in winner_rows
+        ]
         result.append({
             "id": cat["id"],
             "slug": cat["slug"],
             "name": cat["name"],
-            "winner": {
-                "id": winner["id"],
-                "name": winner["name"],
-                "subtitle": winner["subtitle"],
-            } if winner else None,
+            # Keep "winner" (first/single) for backwards compat, add "winners" array
+            "winner": winners_list[0] if winners_list else None,
+            "winners": winners_list,
         })
     db.close()
     return jsonify({"categories": result})

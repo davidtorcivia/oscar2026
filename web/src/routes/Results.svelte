@@ -22,9 +22,11 @@
     let s = 0;
     let t = 0;
     for (const r of resultsData) {
-      if (r.winner) {
+      const winnerList = r.winners || (r.winner ? [r.winner] : []);
+      if (winnerList.length > 0) {
         t++;
-        if (picks[String(r.id)] === r.winner.id) {
+        const userPick = picks[String(r.id)];
+        if (userPick && winnerList.some(w => w.id === userPick)) {
           s++;
         }
       }

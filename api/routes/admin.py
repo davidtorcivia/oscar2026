@@ -36,13 +36,13 @@ def get_users():
         "SELECT id, username, created_at, submitted_at FROM users ORDER BY username"
     ).fetchall()
 
-    # Get winners for scoring
+    # Get winners for scoring (supports ties)
     winners = {}
     winner_rows = db.execute(
         "SELECT category_id, id FROM nominees WHERE is_winner = 1"
     ).fetchall()
     for w in winner_rows:
-        winners[w["category_id"]] = w["id"]
+        winners.setdefault(w["category_id"], set()).add(w["id"])
 
     result = []
     for user in users:
@@ -53,7 +53,8 @@ def get_users():
 
         score = 0
         for pick in picks:
-            if winners.get(pick["category_id"]) == pick["nominee_id"]:
+            cat_winners = winners.get(pick["category_id"], set())
+            if pick["nominee_id"] in cat_winners:
                 score += 1
 
         result.append({
@@ -120,11 +121,7 @@ def set_winner():
         return jsonify({"error": "category_id and nominee_id required"}), 400
 
     db = get_db()
-    # Clear existing winner for this category
-    db.execute(
-        "UPDATE nominees SET is_winner = 0 WHERE category_id = ?", (category_id,)
-    )
-    # Set new winner
+    # Toggle this nominee as a winner (additive - supports ties)
     db.execute(
         "UPDATE nominees SET is_winner = 1 WHERE id = ? AND category_id = ?",
         (nominee_id, category_id),

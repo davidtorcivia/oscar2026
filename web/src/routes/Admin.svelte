@@ -150,27 +150,39 @@
     {#if activeTab === 'results'}
       <div class="results-entry">
         {#each categories as cat}
-          {@const winner = cat.nominees.find(n => n.is_winner)}
-          <div class="cat-card" class:has-winner={!!winner}>
+          {@const catWinners = cat.nominees.filter(n => n.is_winner)}
+          <div class="cat-card" class:has-winner={catWinners.length > 0}>
             <div class="cat-card-header">
               <span class="cat-card-name">{cat.name}</span>
-              {#if winner}
-                <button class="clear-btn" onclick={() => clearWinner(cat.id)}>Undo</button>
+              {#if catWinners.length > 0}
+                <button class="clear-btn" onclick={() => clearWinner(cat.id)}>Clear</button>
               {/if}
             </div>
-            <select
-              onchange={(e) => {
-                if (e.target.value) setWinner(cat.id, parseInt(e.target.value));
-              }}
-              value={winner ? String(winner.id) : ''}
-            >
-              <option value="">Select winner</option>
+            <div class="cat-card-nominees">
               {#each cat.nominees as nom}
-                <option value={String(nom.id)}>
-                  {nom.name}{nom.subtitle ? ` - ${nom.subtitle}` : ''}
-                </option>
+                <button
+                  class="nom-toggle"
+                  class:is-winner={nom.is_winner}
+                  onclick={() => {
+                    if (nom.is_winner) {
+                      // Remove this specific winner by clearing all and re-setting the others
+                      clearWinner(cat.id).then(() => {
+                        const others = catWinners.filter(w => w.id !== nom.id);
+                        others.forEach(w => setWinner(cat.id, w.id));
+                      });
+                    } else {
+                      setWinner(cat.id, nom.id);
+                    }
+                  }}
+                >
+                  <span class="nom-check">{nom.is_winner ? '\u2605' : '\u25CB'}</span>
+                  <span class="nom-label">{nom.name}{nom.subtitle ? ` - ${nom.subtitle}` : ''}</span>
+                </button>
               {/each}
-            </select>
+            </div>
+            {#if catWinners.length > 1}
+              <div class="tie-badge">TIE</div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -399,14 +411,64 @@
     color: var(--gold);
   }
 
-  .cat-card select {
+  .cat-card-nominees {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .nom-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100%;
-    padding: 8px 10px;
-    background: var(--black-surface);
-    border: 1px solid var(--divider-light);
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid transparent;
     color: var(--text);
     font-family: var(--font-body);
     font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .nom-toggle:hover {
+    background: var(--hover);
+  }
+
+  .nom-toggle.is-winner {
+    background: rgba(213,186,109,0.12);
+    border-color: var(--gold-dim);
+  }
+
+  .nom-check {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .nom-toggle.is-winner .nom-check {
+    color: var(--gold);
+  }
+
+  .nom-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .tie-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--gold);
+    background: rgba(213,186,109,0.1);
+    border: 1px solid var(--gold-dim);
+    letter-spacing: 0.1em;
   }
 
   .clear-btn {
